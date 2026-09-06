@@ -1,9 +1,17 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net9.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <PackageId>RaylibGameFramework.Menus</PackageId>
+    <Version>0.1.1</Version>
+    <Description>A data-driven menu system for Raylib games with keyboard, mouse and gamepad navigation.</Description>
   </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="RaylibGameFramework.Input" Version="0.1.4" />
+    <PackageReference Include="Raylib-cs" Version="8.0.0" />
+  </ItemGroup>
 
 </Project>
