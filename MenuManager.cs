@@ -30,7 +30,6 @@ public sealed class MenuManager
     private Vector2 _lastMousePosition;
     private bool _hasMousePosition;
     private bool _suppressMenuInput;
-    private InputDeviceFamily _selectedBindingFamily = InputDeviceFamily.KeyboardMouse;
 
     public MenuManager(MenuConfig config, InputController input, InputConfig inputConfig)
     {
@@ -131,19 +130,6 @@ public sealed class MenuManager
                     }
 
                     _selectedIndex = index;
-
-                    if (item.Type == "KeyBind")
-                    {
-                        Rectangle keyboardBounds = GetBindingCellBounds(
-                            bounds,
-                            InputDeviceFamily.KeyboardMouse);
-                        if (mousePosition.X < keyboardBounds.X)
-                        {
-                            continue;
-                        }
-
-                        _selectedBindingFamily = GetBindingFamilyAtX(bounds, mousePosition.X);
-                    }
 
                     if (item.Type == "Slider" && Raylib.IsMouseButtonDown(MouseButton.Left))
                     {
@@ -246,7 +232,7 @@ public sealed class MenuManager
             case "Slider":
                 return AdjustSlider(item, direction);
             case "KeyBind":
-                _input.BeginRebind(item.Action!, _selectedBindingFamily);
+                _input.BeginRebind(item.Action!, _input.ActiveDeviceFamily);
                 return null;
             default:
                 return null;
@@ -285,17 +271,8 @@ public sealed class MenuManager
             "Toggle" => SetToggle(item),
             "Selector" => SetSelector(item, direction),
             "Slider" => AdjustSlider(item, direction),
-            "KeyBind" => SelectBindingFamily(direction),
             _ => null
         };
-    }
-
-    private MenuAction? SelectBindingFamily(int direction)
-    {
-        _selectedBindingFamily = direction < 0
-            ? InputDeviceFamily.KeyboardMouse
-            : InputDeviceFamily.Gamepad;
-        return null;
     }
 
     private static MenuAction SetToggle(MenuItemDefinition item)
@@ -513,8 +490,8 @@ public sealed class MenuManager
     {
         Rectangle keyboardBounds = GetBindingCellBounds(bounds, InputDeviceFamily.KeyboardMouse);
         Rectangle gamepadBounds = GetBindingCellBounds(bounds, InputDeviceFamily.Gamepad);
-        DrawBindingCell(keyboardBounds, selected && _selectedBindingFamily == InputDeviceFamily.KeyboardMouse);
-        DrawBindingCell(gamepadBounds, selected && _selectedBindingFamily == InputDeviceFamily.Gamepad);
+        DrawBindingCell(keyboardBounds, selected && _input.ActiveDeviceFamily == InputDeviceFamily.KeyboardMouse);
+        DrawBindingCell(gamepadBounds, selected && _input.ActiveDeviceFamily == InputDeviceFamily.Gamepad);
 
         int textY = (int)bounds.Y + ((ControlHeight - ItemFontSize) / 2);
         int actionWidth = Math.Max(1, (int)(bounds.Width * 0.34f) - 24);
@@ -539,7 +516,7 @@ public sealed class MenuManager
     {
         bool isCapturing = _input.IsRebinding &&
             string.Equals(_input.RebindingAction, item.Action, StringComparison.OrdinalIgnoreCase) &&
-            _selectedBindingFamily == family;
+            _input.RebindingDeviceFamily == family;
         InputBinding? binding = _input.GetBinding(item.Action!, family);
         string text = isCapturing ? "Press an input..." : GetBindingDisplayName(binding);
         int availableWidth = Math.Max(1, (int)bounds.Width - 12);
@@ -592,14 +569,6 @@ public sealed class MenuManager
         float x = bounds.X + actionWidth +
             (family == InputDeviceFamily.Gamepad ? bindingWidth : 0);
         return new Rectangle(x, bounds.Y, bindingWidth, bounds.Height);
-    }
-
-    private static InputDeviceFamily GetBindingFamilyAtX(Rectangle bounds, float mouseX)
-    {
-        Rectangle gamepadBounds = GetBindingCellBounds(bounds, InputDeviceFamily.Gamepad);
-        return mouseX >= gamepadBounds.X
-            ? InputDeviceFamily.Gamepad
-            : InputDeviceFamily.KeyboardMouse;
     }
 
     private static void DrawKeyBindHeadings()
