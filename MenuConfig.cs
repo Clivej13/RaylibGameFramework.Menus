@@ -21,6 +21,8 @@ public sealed class MenuItemDefinition
     public string Function { get; set; } = string.Empty;
     public string? Target { get; set; }
     public string? Action { get; set; }
+    public string? KeyboardMouseDescription { get; set; }
+    public string? ControllerDescription { get; set; }
     public List<string> Options { get; set; } = [];
     public double? Min { get; set; }
     public double? Max { get; set; }

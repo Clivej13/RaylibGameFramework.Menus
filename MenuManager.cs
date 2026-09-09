@@ -37,7 +37,7 @@ public sealed class MenuManager
         _input = input ?? throw new ArgumentNullException(nameof(input));
         _inputConfig = inputConfig ?? throw new ArgumentNullException(nameof(inputConfig));
         _currentMenuName = config.StartMenu;
-        _selectedIndex = FindFirstInteractiveIndex(CurrentMenu);
+        _selectedIndex = FindFirstFocusableIndex(CurrentMenu);
     }
 
     public MenuAction? Update()
@@ -118,7 +118,7 @@ public sealed class MenuManager
                 for (int index = 0; index < menu.Items.Count; index++)
                 {
                     MenuItemDefinition item = menu.Items[index];
-                    if (!IsInteractive(item))
+                    if (!IsFocusable(item))
                     {
                         continue;
                     }
@@ -185,7 +185,7 @@ public sealed class MenuManager
         int titleX = (Raylib.GetScreenWidth() - Raylib.MeasureText(menu.Title, TitleFontSize)) / 2;
         Raylib.DrawText(menu.Title, titleX, 30, TitleFontSize, Color.DarkBlue);
 
-        if (menu.Items.Any(item => item.Type == "KeyBind"))
+        if (menu.Items.Any(item => item.Type is "KeyBind" or "ControlDescription"))
         {
             DrawKeyBindHeadings();
         }
@@ -331,7 +331,7 @@ public sealed class MenuManager
         {
             index = (index + direction + menu.Items.Count) % menu.Items.Count;
         }
-        while (!IsInteractive(menu.Items[index]));
+        while (!IsFocusable(menu.Items[index]));
 
         _selectedIndex = index;
     }
@@ -347,7 +347,7 @@ public sealed class MenuManager
 
     private void ResetMenuPosition()
     {
-        _selectedIndex = FindFirstInteractiveIndex(CurrentMenu);
+        _selectedIndex = FindFirstFocusableIndex(CurrentMenu);
         _scrollOffset = 0;
         EnsureSelectedVisible();
     }
@@ -376,12 +376,12 @@ public sealed class MenuManager
         _scrollOffset = Math.Clamp(_scrollOffset, 0, Math.Max(0, GetContentHeight(menu) - GetViewportHeight()));
     }
 
-    private static bool IsInteractive(MenuItemDefinition item) =>
-        item.Type is "Button" or "Toggle" or "Selector" or "Slider" or "KeyBind";
+    private static bool IsFocusable(MenuItemDefinition item) =>
+        item.Type is "Button" or "Toggle" or "Selector" or "Slider" or "KeyBind" or "ControlDescription";
 
-    private static int FindFirstInteractiveIndex(MenuDefinition menu)
+    private static int FindFirstFocusableIndex(MenuDefinition menu)
     {
-        int index = menu.Items.FindIndex(IsInteractive);
+        int index = menu.Items.FindIndex(IsFocusable);
         if (index < 0)
         {
             throw new InvalidDataException("Every menu must contain at least one interactive item.");
@@ -468,7 +468,7 @@ public sealed class MenuManager
             return;
         }
 
-        if (item.Type == "KeyBind")
+        if (item.Type is "KeyBind" or "ControlDescription")
         {
             DrawKeyBind(item, bounds, selected);
             return;
@@ -490,8 +490,8 @@ public sealed class MenuManager
     {
         Rectangle keyboardBounds = GetBindingCellBounds(bounds, InputDeviceFamily.KeyboardMouse);
         Rectangle gamepadBounds = GetBindingCellBounds(bounds, InputDeviceFamily.Gamepad);
-        DrawBindingCell(keyboardBounds, selected && _input.ActiveDeviceFamily == InputDeviceFamily.KeyboardMouse);
-        DrawBindingCell(gamepadBounds, selected && _input.ActiveDeviceFamily == InputDeviceFamily.Gamepad);
+        DrawBindingCell(keyboardBounds, selected && (item.Type == "ControlDescription" || _input.ActiveDeviceFamily == InputDeviceFamily.KeyboardMouse));
+        DrawBindingCell(gamepadBounds, selected && (item.Type == "ControlDescription" || _input.ActiveDeviceFamily == InputDeviceFamily.Gamepad));
 
         int textY = (int)bounds.Y + ((ControlHeight - ItemFontSize) / 2);
         int actionWidth = Math.Max(1, (int)(bounds.Width * 0.34f) - 24);
@@ -514,11 +514,24 @@ public sealed class MenuManager
         InputDeviceFamily family,
         int textY)
     {
+        if (item.Type == "ControlDescription")
+        {
+            DrawCellText(family == InputDeviceFamily.KeyboardMouse
+                ? item.KeyboardMouseDescription ?? string.Empty
+                : item.ControllerDescription ?? string.Empty, bounds, textY);
+            return;
+        }
+
         bool isCapturing = _input.IsRebinding &&
             string.Equals(_input.RebindingAction, item.Action, StringComparison.OrdinalIgnoreCase) &&
             _input.RebindingDeviceFamily == family;
         InputBinding? binding = _input.GetBinding(item.Action!, family);
         string text = isCapturing ? "Press an input..." : GetBindingDisplayName(binding);
+        DrawCellText(text, bounds, textY);
+    }
+
+    private static void DrawCellText(string text, Rectangle bounds, int textY)
+    {
         int availableWidth = Math.Max(1, (int)bounds.Width - 12);
         int fontSize = FitFontSize(text, ItemFontSize, availableWidth);
         int textX = (int)bounds.X + (((int)bounds.Width - Raylib.MeasureText(text, fontSize)) / 2);
@@ -537,7 +550,7 @@ public sealed class MenuManager
         return fontSize;
     }
 
-    private static string GetBindingDisplayName(InputBinding? binding)
+    public static string GetBindingDisplayName(InputBinding? binding)
     {
         if (binding is null)
         {
@@ -554,8 +567,24 @@ public sealed class MenuManager
             "LeftYPositive" => "Left Stick Down",
             "LeftXNegative" => "Left Stick Left",
             "LeftXPositive" => "Left Stick Right",
-            "RightTrigger" => "Right Trigger",
-            "LeftTrigger" => "Left Trigger",
+            "RightYNegative" => "Right Stick Up",
+            "RightYPositive" => "Right Stick Down",
+            "RightXNegative" => "Right Stick Left",
+            "RightXPositive" => "Right Stick Right",
+            "LeftFaceLeft" => "D-Pad Left",
+            "LeftFaceRight" => "D-Pad Right",
+            "LeftFaceUp" => "D-Pad Up",
+            "LeftFaceDown" => "D-Pad Down",
+            "RightTrigger" or "RightTrigger2" => "RT",
+            "LeftTrigger" or "LeftTrigger2" => "LT",
+            "RightTrigger1" => "RB",
+            "LeftTrigger1" => "LB",
+            "LeftThumb" => "Left Stick Click",
+            "RightThumb" => "Right Stick Click",
+            "MouseXNegative" => "Mouse Left",
+            "MouseXPositive" => "Mouse Right",
+            "MouseYNegative" => "Mouse Up",
+            "MouseYPositive" => "Mouse Down",
             _ when string.Equals(binding.Device, "Mouse", StringComparison.OrdinalIgnoreCase) =>
                 $"Mouse {binding.Input}",
             _ => binding.Input
