@@ -10,6 +10,7 @@ public sealed class MenuConfig
 
 public sealed class MenuDefinition
 {
+    public MenuLayout Layout { get; set; } = MenuLayout.Standard;
     public string Title { get; set; } = string.Empty;
     public List<MenuItemDefinition> Items { get; set; } = [];
 }

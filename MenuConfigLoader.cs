@@ -23,6 +23,11 @@ public static class MenuConfigLoader
 
         foreach ((string name, MenuDefinition menu) in config.Menus)
         {
+            if (!Enum.IsDefined(menu.Layout))
+            {
+                throw new InvalidDataException($"Menu '{name}' contains unsupported layout '{menu.Layout}'.");
+            }
+
             if (menu.Items.Count == 0)
             {
                 throw new InvalidDataException($"Menu '{name}' must contain one or more items.");

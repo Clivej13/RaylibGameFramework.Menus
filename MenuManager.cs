@@ -40,6 +40,19 @@ public sealed class MenuManager
         _selectedIndex = FindFirstFocusableIndex(CurrentMenu);
     }
 
+    public string CurrentMenuName => _currentMenuName;
+
+    /// <summary>Index in the current menu's Items, including labels and spacers.</summary>
+    public int SelectedIndex => _selectedIndex;
+
+    public MenuItemState SelectedItem => new(CurrentMenu.Items[_selectedIndex]);
+
+    /// <summary>Screen-space drawing bounds, or null for Standard. Query with a Raylib window open.</summary>
+    public Rectangle? DetailPanelBounds => CurrentLayoutBounds.Detail;
+
+    private (Rectangle List, Rectangle? Detail) CurrentLayoutBounds =>
+        CalculateLayoutBounds(CurrentMenu.Layout, Raylib.GetScreenWidth(), Raylib.GetScreenHeight());
+
     public MenuAction? Update()
     {
         if (_input.CompletedRebind is InputRebindResult completedRebind)
@@ -185,13 +198,26 @@ public sealed class MenuManager
         int titleX = (Raylib.GetScreenWidth() - Raylib.MeasureText(menu.Title, TitleFontSize)) / 2;
         Raylib.DrawText(menu.Title, titleX, 30, TitleFontSize, Color.DarkBlue);
 
+        Rectangle listBounds = CurrentLayoutBounds.List;
+        bool split = menu.Layout == MenuLayout.ListWithDetail;
+        if (split)
+        {
+            Raylib.BeginScissorMode((int)listBounds.X, 0, (int)listBounds.Width, ContentTop);
+        }
+
         if (menu.Items.Any(item => item.Type is "KeyBind" or "ControlDescription"))
         {
             DrawKeyBindHeadings();
         }
 
+        if (split)
+        {
+            Raylib.EndScissorMode();
+        }
+
         int viewportHeight = GetViewportHeight();
-        Raylib.BeginScissorMode(0, ContentTop, Raylib.GetScreenWidth(), viewportHeight);
+        Raylib.BeginScissorMode(split ? (int)listBounds.X : 0, ContentTop,
+            split ? (int)listBounds.Width : Raylib.GetScreenWidth(), viewportHeight);
 
         for (int index = 0; index < menu.Items.Count; index++)
         {
@@ -260,7 +286,11 @@ public sealed class MenuManager
             return null;
         }
 
-        return new MenuAction(item.Function);
+        // Preserve arbitrary JSON payloads without guessing consumer-specific CLR types.
+        object? value = item.Value.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null
+            ? null
+            : item.Value.Clone();
+        return new MenuAction(item.Function, value);
     }
 
     private MenuAction? AdjustSelected(int direction)
@@ -430,17 +460,41 @@ public sealed class MenuManager
 
     private Rectangle GetItemBounds(MenuDefinition menu, int index)
     {
-        int itemWidth = GetItemWidth();
-        float x = (Raylib.GetScreenWidth() - itemWidth) / 2f;
+        Rectangle list = CurrentLayoutBounds.List;
         float y = GetContentOriginY(menu) + GetItemOffset(menu, index) - _scrollOffset;
-        return new Rectangle(x, y, itemWidth, GetItemHeight(menu.Items[index]));
+        return new Rectangle(list.X, y, list.Width, GetItemHeight(menu.Items[index]));
     }
 
-    private static int GetItemWidth() =>
-        Math.Min(MaxItemWidth, Math.Max(1, Raylib.GetScreenWidth() - 32));
+    private static (Rectangle List, Rectangle? Detail) CalculateLayoutBounds(
+        MenuLayout layout, int screenWidth, int screenHeight)
+    {
+        int height = Math.Max(1, screenHeight - ContentTop - ContentBottomMargin);
+        if (layout == MenuLayout.Standard)
+        {
+            int width = Math.Min(MaxItemWidth, Math.Max(1, screenWidth - 32));
+            return (new Rectangle((screenWidth - width) / 2f, ContentTop, width, height), null);
+        }
 
-    private static bool IsPointInViewport(Vector2 point) =>
-        point.Y >= ContentTop && point.Y <= ContentTop + GetViewportHeight();
+        // Reserve a gutter for the list scrollbar. Scale margins down for tiny windows.
+        int availableWidth = Math.Max(0, screenWidth);
+        int margin = Math.Min(16, availableWidth / 8);
+        int innerWidth = availableWidth - margin * 2;
+        int gap = Math.Min(32, innerWidth / 4);
+        int listWidth = (int)((innerWidth - gap) * 0.4f);
+        int detailX = margin + listWidth + gap;
+        return (
+            new Rectangle(margin, ContentTop, listWidth, height),
+            new Rectangle(detailX, ContentTop, availableWidth - margin - detailX, height));
+    }
+
+    private bool IsPointInViewport(Vector2 point)
+    {
+        return ContainsListPoint(CurrentMenu.Layout, CurrentLayoutBounds.List, point);
+    }
+
+    private static bool ContainsListPoint(MenuLayout layout, Rectangle list, Vector2 point) =>
+        point.Y >= list.Y && point.Y <= list.Y + list.Height &&
+        (layout == MenuLayout.Standard || (point.X >= list.X && point.X < list.X + list.Width));
 
     private void DrawItem(MenuItemDefinition item, Rectangle bounds, bool selected)
     {
@@ -600,10 +654,11 @@ public sealed class MenuManager
         return new Rectangle(x, bounds.Y, bindingWidth, bounds.Height);
     }
 
-    private static void DrawKeyBindHeadings()
+    private void DrawKeyBindHeadings()
     {
-        int itemWidth = GetItemWidth();
-        float x = (Raylib.GetScreenWidth() - itemWidth) / 2f;
+        Rectangle list = CurrentLayoutBounds.List;
+        float itemWidth = list.Width;
+        float x = list.X;
         float actionWidth = itemWidth * 0.34f;
         float bindingWidth = (itemWidth - actionWidth) / 2f;
         const int fontSize = 20;
@@ -652,7 +707,12 @@ public sealed class MenuManager
             return;
         }
 
-        float x = (Raylib.GetScreenWidth() + GetItemWidth()) / 2f + 14;
+        Rectangle list = CurrentLayoutBounds.List;
+        float x = list.X + list.Width + 14;
+        if (CurrentLayoutBounds.Detail is Rectangle detail && x + 6 > detail.X)
+        {
+            return;
+        }
         float thumbHeight = Math.Max(28, viewportHeight * (viewportHeight / contentHeight));
         float travel = viewportHeight - thumbHeight;
         float maxScroll = contentHeight - viewportHeight;
