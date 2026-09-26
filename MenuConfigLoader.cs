@@ -5,7 +5,7 @@ namespace RaylibGameFramework.Menus;
 public static class MenuConfigLoader
 {
     private static readonly HashSet<string> SupportedTypes =
-        ["Button", "Toggle", "Selector", "Slider", "KeyBind", "Label", "Spacer"];
+        ["Button", "Toggle", "Selector", "Slider", "KeyBind", "ControlDescription", "Label", "Spacer"];
 
     public static MenuConfig Load(string path)
     {
@@ -23,6 +23,11 @@ public static class MenuConfigLoader
 
         foreach ((string name, MenuDefinition menu) in config.Menus)
         {
+            if (!Enum.IsDefined(menu.Layout))
+            {
+                throw new InvalidDataException($"Menu '{name}' contains unsupported layout '{menu.Layout}'.");
+            }
+
             if (menu.Items.Count == 0)
             {
                 throw new InvalidDataException($"Menu '{name}' must contain one or more items.");
@@ -51,6 +56,12 @@ public static class MenuConfigLoader
     {
         switch (item.Type)
         {
+            case "ControlDescription" when string.IsNullOrWhiteSpace(item.Text) ||
+                                                item.KeyboardMouseDescription is null ||
+                                                item.ControllerDescription is null:
+                throw new InvalidDataException(
+                    $"ControlDescription '{item.Text}' in menu '{menuName}' requires Text, KeyboardMouseDescription, and ControllerDescription.");
+
             case "KeyBind" when string.IsNullOrWhiteSpace(item.Action):
                 throw new InvalidDataException($"KeyBind '{item.Text}' in menu '{menuName}' requires an Action.");
 
